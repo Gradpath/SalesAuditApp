@@ -39,9 +39,6 @@ public class SalesAuditController implements Serializable {
 	@Autowired
 	SalesAuditUtility salesAuditUtility;
 
-//	@Autowired
-	AuditEntry auditEntry;
-
 	@Autowired
 	SalesAuditService salesAuditService;
 
@@ -56,9 +53,9 @@ public class SalesAuditController implements Serializable {
 		validateResponse = salesAuditUtility.validateSalesAuditData(selectedDate, selectedRestaurant);
 		if (validateResponse.equalsIgnoreCase("T") || validateResponse.equalsIgnoreCase("F")) {
 			Site site = salesAuditService.getSiteInfo(selectedRestaurant);
-			validateResponse = salesAuditUtility.validateAfterSite(site);
-			if (validateResponse.isEmpty()) {
-				auditEntry = salesAuditService.getAuditEntry(selectedRestaurant, new DateControl(selectedDate));
+			String validateSiteResponse = salesAuditUtility.validateAfterSite(site);
+			if (validateSiteResponse.isEmpty()) {
+				AuditEntry auditEntry = salesAuditService.getAuditEntry(selectedRestaurant, new DateControl(selectedDate));
 				validateResponse = salesAuditUtility.validatePostAuditEntry(selectedDate, validateResponse);
 				if (validateResponse.isEmpty()) {
 					return salesAuditUtility.createSuccessResponse(auditEntry, site);
@@ -66,6 +63,8 @@ public class SalesAuditController implements Serializable {
 				Logger.debug(
 						"auditEntry.getAuditActual().getDbRowExists = " + auditEntry.getAuditActual().isDbRowExists());
 				return salesAuditUtility.createFailureResponseWithAuditEntry(auditEntry, validateResponse);
+			}else {
+				validateResponse = validateSiteResponse;
 			}
 		}
 		return salesAuditUtility.createFailureResponse(validateResponse);
