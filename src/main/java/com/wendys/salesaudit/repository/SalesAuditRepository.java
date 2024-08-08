@@ -1,13 +1,15 @@
 package com.wendys.salesaudit.repository;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Repository;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wendys.salesaudit.model.AuditEntry;
 import com.wendys.salesaudit.model.DataRecord;
 import com.wendys.salesaudit.model.DateControl;
@@ -39,9 +41,33 @@ public class SalesAuditRepository {
     @Value("fiscal.call.info.endpoint")
     String fiscalCallInfoEndpoint;
     
+    @Value("insert.audit.entry.endpoint")
+    String insertAuditEntryEndpoint;
+    
     public void insertAuditEntry(AuditEntry auditEntry, String userId, String coCode) {
-        // TODO Auto-generated method stub
+    	try {
+			String accessToken = auditUtility.getAccessToken();
+			// Convert POJO to JSON
+            ObjectMapper objectMapper = new ObjectMapper();
+            ObjectNode jsonNodes = objectMapper.valueToTree(auditEntry.getAuditActual());
 
+            // Additional fields to be added
+            Map<String, Object> additionalFields = new HashMap<>();
+            additionalFields.put("siteNum", auditEntry.getSiteNum());
+            additionalFields.put("coCodeStr", coCode);
+            additionalFields.put("busDate", auditEntry.getBusinessDat().getTime());
+            additionalFields.put("userID", userId);
+
+            // Add additional fields to the JSON
+            additionalFields.forEach(jsonNodes::putPOJO);
+
+            // Convert back to JSON string if needed
+            String finalJson = objectMapper.writeValueAsString(jsonNodes);
+            
+			auditUtility.insertAuditEntryAPIcall(insertAuditEntryEndpoint, accessToken, finalJson);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
     }
 
     public void updateSSAXCPEntry(AuditEntry auditEntry, String userId, String coCode) {

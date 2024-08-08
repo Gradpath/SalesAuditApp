@@ -1,13 +1,8 @@
 package com.wendys.salesaudit.utility;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -22,9 +17,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wendys.salesaudit.model.AuditEntry;
 import com.wendys.salesaudit.model.DataRecord;
 import com.wendys.salesaudit.model.DateControl;
@@ -213,129 +216,140 @@ public class SalesAuditUtility {
 	}
 
 	public String getAccessToken() throws IOException {
-		URL url = new URL(accessTokenEndpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        
-        String auth = accessTokenUsername + ":" + accessTokenPassword;
-        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
-        conn.setRequestProperty("Authorization", "Basic " + encodedAuth);
+		RestTemplate restTemplate = new RestTemplate();
 
-        String urlParameters = "grant_type=client_credentials";
-        conn.setDoOutput(true);
-        try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = urlParameters.getBytes("utf-8");
-            os.write(input, 0, input.length);
-        }
+		// Set headers
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_OK) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-                JSONObject jsonResponse = new JSONObject(response.toString());
-                return jsonResponse.getString("access_token");
-            }
-        } else {
-            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
-        }
+		// Create Basic Auth Header
+		String auth = accessTokenUsername + ":" + accessTokenPassword;
+		String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+		headers.set("Authorization", "Basic " + encodedAuth);
+
+		// Set request parameters
+		MultiValueMap<String, String> requestBody = new LinkedMultiValueMap<>();
+		requestBody.add("grant_type", "client_credentials");
+
+		// Create request entity
+		HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(requestBody, headers);
+
+		// Make the POST request
+		ResponseEntity<String> response = restTemplate.exchange(accessTokenEndpoint, HttpMethod.POST, request,
+				String.class);
+
+		// Check for successful response
+		if (response.getStatusCode().is2xxSuccessful()) {
+			JSONObject jsonResponse = new JSONObject(response.getBody());
+			return jsonResponse.getString("access_token");
+		} else {
+			throw new RuntimeException("Failed : HTTP error code : " + response.getStatusCode());
+		}
+
 	}
 
 	public Site getSiteInfoAPIcall(String apiUrl, String accessToken, String selectedRestaurant) throws IOException {
-		URL url = new URL(apiUrl);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-        
-        String requestJson = "{\"siteNum\": \""+ selectedRestaurant +"\"}";
-        conn.setDoOutput(true);
-        try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = requestJson.getBytes("utf-8");
-            os.write(input, 0, input.length);
-        }
+		RestTemplate restTemplate = new RestTemplate();
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_OK) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-             // Convert response JSON to Site model
-                ObjectMapper objectMapper = new ObjectMapper();
-                return objectMapper.readValue(response.toString(), Site.class);
-            }
-        } else {
-            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
-        }
+	    // Set headers
+	    HttpHeaders headers = new HttpHeaders();
+	    headers.setBearerAuth(accessToken);
+
+	    // Build the URI with the query parameter
+	    String urlWithParams = UriComponentsBuilder.fromHttpUrl(apiUrl)
+	            .queryParam("siteNum", selectedRestaurant)
+	            .toUriString();
+
+	    // Create request entity with headers only (no body for GET requests)
+	    HttpEntity<String> request = new HttpEntity<>(headers);
+
+	    // Make the GET request
+	    ResponseEntity<Site> response = restTemplate.exchange(
+	            urlWithParams,
+	            HttpMethod.GET,
+	            request,
+	            Site.class
+	    );
+
+	    // Check for successful response
+	    if (response.getStatusCode().is2xxSuccessful()) {
+	        return response.getBody();
+	    } else {
+	        throw new RuntimeException("Failed : HTTP error code : " + response.getStatusCode());
+	    }
 	}
 
-	public DataRecord getAuditEntryAPIcall(String apiUrl, String accessToken, String siteNum, Date businessDat) throws IOException {
-		URL url = new URL(apiUrl);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-        
-        String requestJson = "{\"siteNum\": \""+ siteNum +"\",\"businessDat\": \""+ businessDat +"\"}";
-        conn.setDoOutput(true);
-        try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = requestJson.getBytes("utf-8");
-            os.write(input, 0, input.length);
-        }
+	public DataRecord getAuditEntryAPIcall(String apiUrl, String accessToken, String siteNum, Date businessDat)
+			throws IOException {
+		RestTemplate restTemplate = new RestTemplate();
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_OK) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-             // Convert response JSON to Site model
-                ObjectMapper objectMapper = new ObjectMapper();
-                return objectMapper.readValue(response.toString(), DataRecord.class);
-            }
-        } else {
-            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
-        }
+	    // Set headers
+	    HttpHeaders headers = new HttpHeaders();
+	    headers.setBearerAuth(accessToken);
+
+	    // Format the date as a string (adjust format as needed)
+	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    String businessDatStr = dateFormat.format(businessDat);
+
+	    // Build the URI with the query parameters
+	    String urlWithParams = UriComponentsBuilder.fromHttpUrl(apiUrl)
+	            .queryParam("siteNum", siteNum)
+	            .queryParam("businessDat", businessDatStr)
+	            .toUriString();
+
+	    // Create request entity with headers only (no body for GET requests)
+	    HttpEntity<String> request = new HttpEntity<>(headers);
+
+	    // Make the GET request
+	    ResponseEntity<DataRecord> response = restTemplate.exchange(
+	            urlWithParams,
+	            HttpMethod.GET,
+	            request,
+	            DataRecord.class
+	    );
+
+	    // Check for successful response
+	    if (response.getStatusCode().is2xxSuccessful()) {
+	        return response.getBody();
+	    } else {
+	        throw new RuntimeException("Failed : HTTP error code : " + response.getStatusCode());
+	    }
 	}
 
-	public FiscalData getFiscalCallInfoAPIcall(String fiscalCallInfoEndpoint, String accessToken, Date businessDat) throws IOException{
-		URL url = new URL(fiscalCallInfoEndpoint);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-        
-        String requestJson = "{\"businessDat\": \""+ businessDat +"\"}";
-        conn.setDoOutput(true);
-        try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = requestJson.getBytes("utf-8");
-            os.write(input, 0, input.length);
-        }
+	public FiscalData getFiscalCallInfoAPIcall(String fiscalCallInfoEndpoint, String accessToken, Date businessDat)
+			throws IOException {
+		RestTemplate restTemplate = new RestTemplate();
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setBearerAuth(accessToken);
+		String requestJson = "{\"businessDat\": \"" + businessDat + "\"}";
+		HttpEntity<String> request = new HttpEntity<>(requestJson, headers);
+		ResponseEntity<FiscalData> response = restTemplate.exchange(fiscalCallInfoEndpoint, HttpMethod.POST, request,
+				FiscalData.class);
+		if (response.getStatusCode().is2xxSuccessful()) {
+			return response.getBody();
+		} else {
+			throw new RuntimeException("Failed : HTTP error code : " + response.getStatusCode());
+		}
+	}
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_OK) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-             // Convert response JSON to Site model
-                ObjectMapper objectMapper = new ObjectMapper();
-                return objectMapper.readValue(response.toString(), FiscalData.class);
-            }
-        } else {
-            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
-        }
+	public void insertAuditEntryAPIcall(String insertAuditEntryEndpoint, String accessToken, String finalJson) {
+		RestTemplate restTemplate = new RestTemplate();
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		// Create HttpEntity
+        HttpEntity<String> request = new HttpEntity<>(finalJson, headers);
+
+        // Send POST request
+        ResponseEntity<String> response = restTemplate.exchange(
+        		insertAuditEntryEndpoint,
+                HttpMethod.POST,
+                request,
+                String.class
+        );
+
+        System.out.println("Response: " + response.getBody());
+		
 	}
 
 }
