@@ -1,7 +1,15 @@
 package com.wendys.salesaudit.utility;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 
@@ -9,23 +17,36 @@ import org.joda.time.DateTime;
 import org.joda.time.DateTimeConstants;
 import org.joda.time.LocalDate;
 import org.joda.time.LocalTime;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wendys.salesaudit.model.AuditEntry;
+import com.wendys.salesaudit.model.DataRecord;
 import com.wendys.salesaudit.model.DateControl;
 import com.wendys.salesaudit.model.FiscalData;
 import com.wendys.salesaudit.model.SalesAuditResponse;
 import com.wendys.salesaudit.model.Site;
 import com.wendys.salesaudit.service.SalesAuditService;
-import org.springframework.stereotype.Component;
 
 @Component
 public class SalesAuditUtility {
 
 	@Autowired
 	SalesAuditService salesAuditService;
+	
+	@Value("access.token.username")
+	public String accessTokenUsername;
+	
+	@Value("access.token.password")
+	public String accessTokenPassword;
+	
+	@Value("access.token.endpoint")
+	public String accessTokenEndpoint;
 
 	private int cutoffHour = 19;
 
@@ -189,6 +210,132 @@ public class SalesAuditUtility {
 			Logger.debug("Field is null/not numeric");
 		}
 		return salesAuditResponse;
+	}
+
+	public String getAccessToken() throws IOException {
+		URL url = new URL(accessTokenEndpoint);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        
+        String auth = accessTokenUsername + ":" + accessTokenPassword;
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+        conn.setRequestProperty("Authorization", "Basic " + encodedAuth);
+
+        String urlParameters = "grant_type=client_credentials";
+        conn.setDoOutput(true);
+        try (OutputStream os = conn.getOutputStream()) {
+            byte[] input = urlParameters.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+                JSONObject jsonResponse = new JSONObject(response.toString());
+                return jsonResponse.getString("access_token");
+            }
+        } else {
+            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
+        }
+	}
+
+	public Site getSiteInfoAPIcall(String apiUrl, String accessToken, String selectedRestaurant) throws IOException {
+		URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+        
+        String requestJson = "{\"siteNum\": \""+ selectedRestaurant +"\"}";
+        conn.setDoOutput(true);
+        try (OutputStream os = conn.getOutputStream()) {
+            byte[] input = requestJson.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+             // Convert response JSON to Site model
+                ObjectMapper objectMapper = new ObjectMapper();
+                return objectMapper.readValue(response.toString(), Site.class);
+            }
+        } else {
+            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
+        }
+	}
+
+	public DataRecord getAuditEntryAPIcall(String apiUrl, String accessToken, String siteNum, Date businessDat) throws IOException {
+		URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+        
+        String requestJson = "{\"siteNum\": \""+ siteNum +"\",\"businessDat\": \""+ businessDat +"\"}";
+        conn.setDoOutput(true);
+        try (OutputStream os = conn.getOutputStream()) {
+            byte[] input = requestJson.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+             // Convert response JSON to Site model
+                ObjectMapper objectMapper = new ObjectMapper();
+                return objectMapper.readValue(response.toString(), DataRecord.class);
+            }
+        } else {
+            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
+        }
+	}
+
+	public FiscalData getFiscalCallInfoAPIcall(String fiscalCallInfoEndpoint, String accessToken, Date businessDat) throws IOException{
+		URL url = new URL(fiscalCallInfoEndpoint);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+        
+        String requestJson = "{\"businessDat\": \""+ businessDat +"\"}";
+        conn.setDoOutput(true);
+        try (OutputStream os = conn.getOutputStream()) {
+            byte[] input = requestJson.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+             // Convert response JSON to Site model
+                ObjectMapper objectMapper = new ObjectMapper();
+                return objectMapper.readValue(response.toString(), FiscalData.class);
+            }
+        } else {
+            throw new RuntimeException("Failed : HTTP error code : " + responseCode);
+        }
 	}
 
 }

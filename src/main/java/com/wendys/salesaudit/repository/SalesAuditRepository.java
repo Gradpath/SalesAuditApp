@@ -3,7 +3,9 @@ package com.wendys.salesaudit.repository;
 import java.util.Date;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Repository;
 
 import com.wendys.salesaudit.model.AuditEntry;
@@ -11,16 +13,32 @@ import com.wendys.salesaudit.model.DataRecord;
 import com.wendys.salesaudit.model.DateControl;
 import com.wendys.salesaudit.model.FiscalData;
 import com.wendys.salesaudit.model.Site;
+import com.wendys.salesaudit.utility.SalesAuditUtility;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
-@Repository
+@Component
 public class SalesAuditRepository {
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
-
+    SalesAuditUtility auditUtility;
+    
+    @Value("audit.entry.endpoint")
+    String auditEntryEndpoint;
+    
+    @Value("polled.entry.endpoint")
+    String polledEntryEndpoint;
+    
+    @Value("rdc.entry.endpoint")
+    String rdcEntryEndpoint;
+    
+    @Value("site.info.endpoint")
+    String siteInfoEndpoint;
+    
+    @Value("fiscal.call.info.endpoint")
+    String fiscalCallInfoEndpoint;
+    
     public void insertAuditEntry(AuditEntry auditEntry, String userId, String coCode) {
         // TODO Auto-generated method stub
 
@@ -63,28 +81,58 @@ public class SalesAuditRepository {
     }
 
     public FiscalData getFiscalCalInfo(Date businessDat) {
-        // TODO Auto-generated method stub
-        return null;
+    	FiscalData fiscalData = new FiscalData();
+		try {
+			String accessToken = auditUtility.getAccessToken();
+			fiscalData = auditUtility.getFiscalCallInfoAPIcall(fiscalCallInfoEndpoint, accessToken, businessDat);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return fiscalData;
     }
 
-    public DataRecord getAuditEntry(String siteNum, Date businessDat) {
-        // TODO Auto-generated method stub
-        return null;
-    }
+	public DataRecord getAuditEntry(String siteNum, Date businessDat) {
+		DataRecord dataRecord = new DataRecord(siteNum);
+		try {
+			String accessToken = auditUtility.getAccessToken();
+			dataRecord = auditUtility.getAuditEntryAPIcall(auditEntryEndpoint, accessToken, siteNum, businessDat);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return dataRecord;
+	}
 
     public DataRecord getPolledEntry(String siteNum, Date businessDat) {
-        // TODO Auto-generated method stub
-        return null;
+    	DataRecord dataRecord = new DataRecord(siteNum);
+		try {
+			String accessToken = auditUtility.getAccessToken();
+			dataRecord = auditUtility.getAuditEntryAPIcall(polledEntryEndpoint, accessToken, siteNum, businessDat);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return dataRecord;
     }
 
     public DataRecord getRdcEntry(String siteNum, Date businessDat) {
-        // TODO Auto-generated method stub
-        return null;
+    	DataRecord dataRecord = new DataRecord(siteNum);
+		try {
+			String accessToken = auditUtility.getAccessToken();
+			dataRecord = auditUtility.getAuditEntryAPIcall(rdcEntryEndpoint, accessToken, siteNum, businessDat);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return dataRecord;
     }
 
     public Site getSiteInfo(String selectedRestaurant) {
-        // TODO Auto-generated method stub
-        return null;
+    	Site site = new Site();
+        try {
+        	String accessToken = auditUtility.getAccessToken();
+        	site = auditUtility.getSiteInfoAPIcall(siteInfoEndpoint, accessToken, selectedRestaurant);
+        }catch(Exception e) {
+        	e.printStackTrace();
+        }
+        return site;
     }
 
 
